@@ -18,34 +18,54 @@ def docxniffer(input_path):
     return sources
 
 
+def convert(old_path, new_filetype):
+    content = ''
+    try:
+        with ZipFile(old_path) as zf:
+            print('Converting: %s...' % old_path)
+            with open(old_path, "rb") as docx_file:
+                if new_filetype == ".md": content = mammoth.convert_to_markdown(docx_file)
+                else: content = mammoth.convert_to_html(docx_file)            
+    except BadZipfile:
+            print("[EXCEPT]: BadZipFile. Skipping %s...\n" % old_path)
+            # File might: be corrupt, empty or not on path    
+    return content.value
+    
+
+def save_new_file(new_file_path, content):
+    print('Saving: %s...' % new_file_path)
+    with open(new_file_path, "w") as new_file:
+        new_file.write(content)
+
+
+
 def dogwhisperer(input_path, output_path, method):
     print('Running script with arguments: \n\t{0} (input)\n\t{1}(output)\n\t{2}Not implemented (method)\n'.format(input_path, output_path, method))
 
     sources = docxniffer(input_path)
     user_input = input("\nThe listed files are to be converted to markdown-files relative to %s\nPress any key to continue..."%output_path)
-    
-    result = ''
+
+    destination_file_path = ''
     for source in sources:
-        print('Converting: %s...' % source)
-        try:
-            with ZipFile(source) as zf:
-                # Temporarily save the content
-                with open(source, "rb") as docx_file:
-                    result = mammoth.convert_to_markdown(docx_file)
-                # Determine whether to use relative or absolute path for output file
-                destination_file_path = ''
-                if input_path == output_path:
-                    destination_file_path = Path(source).with_suffix('.md')
-                else:
-                    fname = os.path.basename(source) # TODO: Replace hacky solution
-                    new_path = output_path+'/'+fname
-                    destination_file_path = Path(new_path).with_suffix('.md')
-                # Output content with new filetype to determined path 
-                with open(destination_file_path, "w") as markdown_file:
-                    markdown_file.write(result.value)
-        except BadZipfile:
-            print("[EXCEPT]: BadZipFile. Skipping %s...\n" % source)
-            # File might: be corrupt, empty or not on path
+        # Get the content of docx in text-format
+        md_content = convert(source, 'md')
+        if md_content != '':
+            # Use relative path for new file
+            if input_path == output_path: 
+                destination_file_path = Path(source).with_suffix('.md')
+            # Use absolute path for new file
+            else:
+                fn = os.path.basename(source)
+                absolute_path = output_path + '/' + fn
+                destination_file_path = Path(absolute_path).with_suffix('.md')
+            save_new_file(destination_file_path, md_content)
+
+            # Check if file is large enough to attach an html version
+            if(os.path.getsize(destination_file_path) > 10000):
+                    print("\t%s is bigger than 10000 bytes. Attaching a html-file\n"%destination_file_path)
+                    html_content = convert(source, '.html')
+                    html_file_path = Path(destination_file_path).with_suffix('.html')
+                    save_new_file(html_file_path, html_content)
 
 
 if __name__ == '__main__':
@@ -55,11 +75,12 @@ if __name__ == '__main__':
                         nargs='?',
                         default=".")
     parser.add_argument("--output_path",
-                        help="Save location",
+                        help="Saves either where file is retrieved (default)"+
+                            "or at an absolute path specified by user input (recommended).",
                         nargs='?',
                         default=".")
     parser.add_argument("--method",
-                    help="[Not yet implemented]",
+                    help="[Not implemented]",
                     nargs='?',
                     default="")
     args = parser.parse_args()
